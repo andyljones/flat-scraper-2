@@ -61,7 +61,8 @@ def get_listings():
         results[k] = l
     results = pd.concat(results, 1).T
     results['price'] = (results['price'].astype(float) * WEEKS_PER_MONTH).div(10).apply(sp.around).mul(10).astype(int)
-
+    results['printable_station_names'] = results.station_name.apply(lambda x: ', '.join([n.replace(' Underground Station', '') for n in x]))
+    
     return results
     
 def get_rendered_page():

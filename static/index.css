@@ -1,44 +1,21 @@
 #photos {
   overflow-x: scroll;
   white-space:nowrap;
-  margin: 10px;
   float: left;
   clear: left;
-  width: 99%
-}
-
-#details {
-  height: 80px;
-  float: left
+  width: 100%;
 }
 
 .value-displays {
-  height: 100px;
-  width: 100px;
-  margin: 10px;
-  float: left;
-  display: flex;
   justify-content: center;
   align-items: center;
   text-align: center;
-}
-
-.value-display-sep {
-  width: 20px;
-  height: 100px;
-  float: left;
+  width: 80px;
+  margin-left: 10px;
 }
 
 .listing {
-  border-color: rgb(180, 180, 180);
-  border-style: solid;
-  border-width: 5px;
   margin: 10px;
   float: left;
-  width: 98%
-}
-
-body {
-  background-color: rgb(230, 230, 230);
-  font-family: sans-serif;
+  width: 99%;
 }

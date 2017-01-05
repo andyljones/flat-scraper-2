@@ -1,30 +1,34 @@
 <!DOCTYPE html>
 <html>
   <head>
+    <link rel="stylesheet" href="https://maxcdn.bootstrapcdn.com/bootstrap/3.3.7/css/bootstrap.min.css" integrity="sha384-BVYiiSIFeK1dGmJRAkycuHAHRg32OmUcww7on3RYdg4Va+PmSTsz/K68vbdEjh4u" crossorigin="anonymous">
+    <link rel="stylesheet" href="https://maxcdn.bootstrapcdn.com/bootstrap/3.3.7/css/bootstrap-theme.min.css" integrity="sha384-rHyoN1iRsVXV4nD0JutlnGaslCJuC7uwjduW9SVrLvRYooPp2bWYgmgJQIXwl/Sp" crossorigin="anonymous">
+    <script src="https://maxcdn.bootstrapcdn.com/bootstrap/3.3.7/js/bootstrap.min.js" integrity="sha384-Tc5IQib027qvyjSMfHjOMaLkfuWVxZxUPnCJA7l2mCWNIpG9mGCD8wGNIcPD7Txa" crossorigin="anonymous"></script>
     <link rel="stylesheet" type="text/css" href="static/index.css">
   </head>
   <body>
-    {% for listing in listings %}
-    <div class="listing">
-      <div class="value-displays">
-        Price<br>&pound{{listing['price']}}pcm
+    <div class="container-fluid">
+      {% for listing in listings %}
+      <div class="listing panel panel-default">
+        <div class="panel-heading">
+          <div class="pull-left">
+            <a href="{{listing['details_url']}}"><em>{{listing['listing_id']}}</em></a> near {{listing['printable_station_names']}}
+          </div>
+          <div class="value-displays pull-right">
+            &pound{{listing['price']}}pcm
+          </div>
+          <div class="value-displays pull-right">
+            {{listing['travel_time']}} mins
+          </div>
+          <div class="clearfix"></div>
+        </div>
+        <div id="photos" class="">
+        {% for filename in listing['photo_filenames'] %}
+          <img src="photos/{{filename}}">
+        {% endfor %}
+        </div>
       </div>
-      <div class="value-display-sep">
-      </div>
-      <div class="value-displays">
-        {{listing['travel_time']}} mins
-      </div>
-      <ul id="details">
-        <li><em>{{listing['listing_id']}}</em> near {{listing['station_name']}}</li>
-        <li>Last updated: {{listing['last_published_date']}}</li>
-        <li>{{listing['agent_name']}}, <a href="{{listing['details_url']}}">details</a>
-      </ul>
-      <div id="photos">
-      {% for filename in listing['photo_filenames'] %}
-        <img src="photos/{{filename}}">
       {% endfor %}
-      </div>
     </div>
-    {% endfor %}
   </body>
 </html>
