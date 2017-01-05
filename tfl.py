@@ -148,7 +148,7 @@ def get_travel_times(edges, locations, origin=DEFAULT_ORIGIN, transit_time=5):
     
     return times
     
-def cache():
+def get_fast_stations():
     routes = get_routes()
     edges = get_edges(routes)
     locations = get_locations(routes)
@@ -157,4 +157,4 @@ def cache():
     times = get_travel_times(edges, locations)
     times = times.loc[list(names.keys())].rename(names).dropna()
     
-    return edges, locations, times
+    return times[(times < 20) & (times.index.str.contains('Underground'))].sort_values()

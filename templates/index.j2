@@ -1,0 +1,30 @@
+<!DOCTYPE html>
+<html>
+  <head>
+    <link rel="stylesheet" type="text/css" href="static/index.css">
+  </head>
+  <body>
+    {% for listing in listings %}
+    <div class="listing">
+      <div class="value-displays">
+        Price<br>&pound{{listing['price']}}pcm
+      </div>
+      <div class="value-display-sep">
+      </div>
+      <div class="value-displays">
+        {{listing['travel_time']}} mins
+      </div>
+      <ul id="details">
+        <li><em>{{listing['listing_id']}}</em> near {{listing['station_name']}}</li>
+        <li>Last updated: {{listing['last_published_date']}}</li>
+        <li>{{listing['agent_name']}}, <a href="{{listing['details_url']}}">details</a>
+      </ul>
+      <div id="photos">
+      {% for filename in listing['photo_filenames'] %}
+        <img src="photos/{{filename}}">
+      {% endfor %}
+      </div>
+    </div>
+    {% endfor %}
+  </body>
+</html>

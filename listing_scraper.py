@@ -1,9 +1,11 @@
 import json
+import tfl
 import pandas as pd
 import os
 import datetime
 import time
 import requests
+import scipy as sp
 import logging
 from diskcache import Cache
 
@@ -25,14 +27,30 @@ FIELDS_TO_STORE = [
     'latitude',
     'longitude']
 
-REQUEST_DELAY = 1#seconds
 CACHE_LENGTH = 60*60#seconds
+API_LIMIT = 100
+REQUEST_DELAY = 1
 
 ZOOPLA_URL = 'http://api.zoopla.co.uk/api/v1/property_listings.js'
 
+def wait_for_quota():
+    while True:
+        limit = pd.datetime.now() - pd.Timedelta(hours=1)
+        with Cache('cache') as cache:
+            cache['zoopla_calls'] = [c for c in cache.get('zoopla_calls', []) if c > limit]
+            
+            if len(cache['zoopla_calls']) < API_LIMIT - 1:
+                cache['zoopla_calls'] = cache.get('zoopla_calls', []) + [pd.datetime.now()]
+                return
+            else:
+                print('There have been {} calls in the past hour'.format(len(cache['zoopla_calls'])))
+            
+            time.sleep(10)        
+        
+
 def zoopla_listings(**kwargs):
     kwargs['api_key'] = json.load(open('credentials.json'))['zoopla_key']        
-    key = 'listings/' + str(hash(tuple(sorted(kwargs.items()))))
+    key = 'listings_query/' + str(hash(tuple(sorted(kwargs.items()))))
     
     kwargs['page_size'] = 100
     kwargs['page_number'] = 1
@@ -40,9 +58,10 @@ def zoopla_listings(**kwargs):
         if key not in cache:
             listings = []
             while True:
+                wait_for_quota()
                 r = requests.get(ZOOPLA_URL, params=kwargs)   
-                time.sleep(REQUEST_DELAY)
                 r.raise_for_status()
+                
                 result = json.loads(r.content.decode())
                 
                 listings.extend(result['listing'])
@@ -76,14 +95,13 @@ def get_search_params(stations=None):
         furnished='furnished',
         description_style=1)
 
-    options = json.load(open('config.json', 'r'))
-    params['radius'] = options['radius']
+    params['radius'] = 0.5
     params['minimum_beds'] = 0
-    params['maximum_beds'] = options['beds']
-    params['maximum_price'] = int(options['max_price']/WEEKS_PER_MONTH)
+    params['maximum_beds'] = 1
+    params['maximum_price'] = int(1500/WEEKS_PER_MONTH)
 
     results = {}
-    stations = options['stations'] if stations is None else stations
+    stations = tfl.get_fast_stations().index if stations is None else stations
     for station_name in stations:
         lat, lon = get_coords(station_name)
         params_for_name = params.copy()
@@ -104,7 +122,8 @@ def scrape_property_info(page_text):
 
 def create_storable_listing(station_name, start_time, listing):
     page_text = requests.get(listing['details_url']).text
-
+    time.sleep(REQUEST_DELAY)
+    
     return dict(
         {field: listing[field] for field in FIELDS_TO_STORE},
         station_name=[station_name],
@@ -130,11 +149,9 @@ def store_listing(station_name, start_time, listing):
     if not stored_listing:
         logging.info(str.format('Storing listing #{}', listing_id))
         stored_listing = create_storable_listing(station_name, start_time, listing)
-        time.sleep(REQUEST_DELAY)
     elif (listing['last_published_date'] > stored_listing['last_published_date']):
         logging.info(str.format('Updating listing #{}', listing_id))
         stored_listing = update_storable_listing(station_name, start_time, stored_listing, listing)
-        time.sleep(REQUEST_DELAY)
     else:
         logging.debug(str.format('No change in listing #{}', listing_id))
         stored_listing['station_name'] = list(set(stored_listing['station_name']).union([station_name]))
@@ -151,23 +168,3 @@ def scrape_listings_and_images():
         logging.info(str.format('{} listings to store for station {}, {}', len(listings), i+1, station_name))
         for listing in listings:
             store_listing(station_name, start_time, listing)
-
-def survey_prices(stations):
-    
-    results = []
-    for i, (station_name, station_params) in enumerate(get_search_params(stations).items()):     
-        print('Surveying {} of {}'.format(i, len(stations)))
-        with Cache('cache') as cache:
-            key = 'survey/' + station_name
-            if key not in cache:        
-                listings = list(zoopla_listings(**station_params))
-                cache[key] = [l['price'] for l in listings]
-            
-            results.append(pd.Series(cache[key], [station_name]*len(cache[key])))
-    
-    results = WEEKS_PER_MONTH*pd.to_numeric(pd.concat(results))
-    
-    return results
-    
-# import interactive_console_options
-# scrape_listings_and_images()
