@@ -13,6 +13,7 @@ from diskcache import Cache
 
 ROOT = 'https://api.tfl.gov.uk/'
 KEYS = json.load(open('credentials.json'))
+CACHE = 'tflcache'
 
 DEFAULT_ORIGIN = '940GZZLUGPK'
 
@@ -21,10 +22,6 @@ def call_api(endpoint, **kwargs):
     return json.loads(result.content.decode())
     
 def get_routes():
-    with Cache('cache') as cache:
-        if 'tfl/routes' in cache:
-            return cache['tfl/routes']
-    
     data = call_api('Line/Route')
     results = []
     for route in data:
@@ -42,15 +39,12 @@ def get_routes():
             })
             
     results = pd.DataFrame(results)
-    
-    with Cache('cache') as cache:
-        cache['tfl/routes'] = results
         
     return results
     
 def get_timetable(route_id, origin, destination):
     key = 'tfl/timetables/{}-{}-{}.json'.format(route_id, origin, destination)
-    with Cache('cache') as cache:
+    with Cache(CACHE) as cache:
         if key not in cache:
             print('Fetching timetable {}-{}-{}'.format(route_id, origin, destination))
             cache[key] = call_api('Line/{}/Timetable/{}/to/{}'.format(route_id, origin, destination))
@@ -65,7 +59,7 @@ def walk_timetables(routes):
         
 def get_stops(route_id):
     key = 'tfl/stoppoints/{}.json'.format(route_id)
-    with Cache('cache') as cache:
+    with Cache(CACHE) as cache:
         if key not in cache:
             print('Fetching {}'.format(route_id))
             cache[key] = call_api('Line/{}/StopPoints'.format(route_id))
@@ -77,11 +71,7 @@ def walk_stops(routes):
         data = get_stops(row['route_id'])
         yield data    
         
-def get_locations(routes):
-    with Cache('cache') as cache:
-        if 'tfl/locations' in cache:
-            return cache['tfl/locations']
-    
+def get_locations(routes):    
     results = []
     for stops in walk_stops(routes):
         for stop in stops:
@@ -96,17 +86,10 @@ def get_locations(routes):
             })
             
     results = pd.DataFrame(results).drop_duplicates('naptan').set_index('naptan')
-    
-    with Cache('cache') as cache:
-        cache['tfl/locations'] = results
-        
+
     return results
     
 def get_edges(routes):
-    with Cache('cache') as cache:
-        if 'tfl/edges' in cache:
-            return cache['tfl/edges']
-    
     results = []
     for timetable in walk_timetables(routes):
         origin = timetable['timetable']['departureStopId']
@@ -123,16 +106,9 @@ def get_edges(routes):
     results = pd.DataFrame(results, columns=['origin', 'destination', 'time'])
     results = results.groupby(['origin', 'destination']).mean()
     
-    with Cache('cache') as cache:
-        cache['tfl/edges'] = results
-    
     return results
 
-def get_travel_times(edges, locations, origin=DEFAULT_ORIGIN, transit_time=5):
-    with Cache('cache') as cache:
-        if 'tfl/travel_times' in cache:
-            return cache['tfl/travel_times']
-    
+def get_travel_times(edges, locations, origin=DEFAULT_ORIGIN, transit_time=5):    
     G = nx.Graph()
     G.add_weighted_edges_from(map(tuple, list(edges.reset_index().values)))
     
@@ -143,18 +119,21 @@ def get_travel_times(edges, locations, origin=DEFAULT_ORIGIN, transit_time=5):
     times = nx.single_source_dijkstra_path_length(G, origin, weight='weight')
     times = pd.Series(times)
     
-    with Cache('cache') as cache:
-        cache['tfl/travel_times'] = times
-    
     return times
     
-def get_fast_stations():
-    routes = get_routes()
-    edges = get_edges(routes)
-    locations = get_locations(routes)
+def get_station_travel_times():
+    with Cache(CACHE) as cache:
+        if 'travel_times' not in cache:
+            routes = get_routes()
+            edges = get_edges(routes)
+            locations = get_locations(routes)
+            
+            names = locations['name'].to_dict()
+            times = get_travel_times(edges, locations)
+            times = times.loc[list(names.keys())].rename(names).dropna()
+            
+            cache['travel_times'] = times
     
-    names = locations['name'].to_dict()
-    times = get_travel_times(edges, locations)
-    times = times.loc[list(names.keys())].rename(names).dropna()
+        return cache['travel_times']
     
-    return times[(times < 20) & (times.index.str.contains('Underground'))].sort_values()
+    return times

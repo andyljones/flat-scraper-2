@@ -11,10 +11,27 @@ import scipy as sp
 import pandas as pd
 import listing_scraper
 import tfl
-
-from jinja2 import Template
+import humanhash
+import os
+import pickle
+from flask import Flask, render_template, send_from_directory, request, jsonify
 
 from diskcache import Cache
+
+FIELDS_TO_FORMAT = [
+    'listing_id',
+    'status',
+    'price',
+    'description',
+    'details_url',
+    'first_published_date',
+    'last_published_date',
+    'agent_name',
+    'agent_phone',
+    'latitude',
+    'longitude',
+    'num_bathrooms',
+    'num_bedrooms',]
 
 WEEKS_PER_MONTH = 365/12./7
 EARTH_CIRCUMFERENCE = 40075
@@ -23,6 +40,8 @@ MEAN_RADIUS_OF_POINT_IN_UNIT_DISC = 2./3.
 WALKING_SPEED = 5./60.#km per minute
 MAX_DISTANCE_FROM_STATION_IN_KM = KM_PER_MILE*0.5
 MAX_DISTANCE_FROM_STATION_IN_MINS = int(MEAN_RADIUS_OF_POINT_IN_UNIT_DISC*MAX_DISTANCE_FROM_STATION_IN_KM/WALKING_SPEED)
+
+app = Flask(__name__)
 
 def walking_distance(lat_1, lon_1, lat_2, lon_2):
     change_in_lat = EARTH_CIRCUMFERENCE*(lat_1 - lat_2)/360
@@ -48,28 +67,59 @@ def distances_from_stations(listing):
         return {name: MAX_DISTANCE_FROM_STATION_IN_MINS for name in listing['station_name']}
 
             
-def get_listings():
-    with Cache('cache') as cache:
-        listings = {k.split('/')[-1]: cache[k] for k in cache if re.match('listings/\d{8}$', k)}
+def format_listings():
+    
+    times = tfl.get_station_travel_times()
+    
+    results = []
+    for fn in os.listdir('listings'):
+        listing = pickle.load(open('listings/' + fn, 'rb'))
+
+        for field in FIELDS_TO_FORMAT:
+            listing[field] = listing['search_result'][field]
         
-    times = tfl.get_fast_stations()
-    results = {}
-    for k, l in listings.items():
-        l = pd.Series(l)
-        travel_times = {s: times[s] + t for s, t in distances_from_stations(l).items()}
-        l['travel_time'] = int(min(travel_times.values())) + 3
-        results[k] = l
-    results = pd.concat(results, 1).T
-    results['price'] = (results['price'].astype(float) * WEEKS_PER_MONTH).div(10).apply(sp.around).mul(10).astype(int)
-    results['printable_station_names'] = results.station_name.apply(lambda x: ', '.join([n.replace(' Underground Station', '') for n in x]))
+        travel_times = {s: times[s] + t for s, t in distances_from_stations(listing).items()}
+        listing['travel_time'] = int(min(travel_times.values())) + 3
+      
+        listing['price'] = int(10*sp.around(float(listing['search_result']['price'])*WEEKS_PER_MONTH/10))
+            
+        station_names = [n.replace(' Underground Station', '') for n in listing['station_name']]
+        listing['printable_station_names'] = ', '.join(station_names)
+        
+        listing['humanhash'] = humanhash.humanhash(listing['listing_id']).decode()
+        
+        del listing['page_text']
+        del listing['search_result']
+        results.append(listing)
+    results = pd.DataFrame(results).sort_values('listing_id').reset_index(drop=True)
     
     return results
+
+@app.route('/')
+def index():
+    return render_template('index.j2')
+
+@app.route('/listings')
+def listings():
+    with Cache('cache') as cache:
+        if 'listings' not in cache:
+            cache.add('listings', format_listings(), 3600)
+        listings = cache['listings']
+        
+    price = (float(request.args.get('price_lower', 0)), float(request.args.get('price_upper', sp.inf)))
+    time = (float(request.args.get('time_lower', 0)), float(request.args.get('time_upper', sp.inf)))
+    lower_index, upper_index = request.args.get('index_lower'), request.args.get('index_upper')
     
-def get_rendered_page():
-    listings = get_listings().sort_values('travel_time').head()
+    matches = (listings
+                   .loc[lambda df: df.price.between(*price)]
+                   .loc[lambda df: df.travel_time.between(*time)]
+                   .iloc[int(lower_index):int(upper_index)])
     
-    template = Template(open('templates/index.j2').read())
-    rendered = template.render(listings=[l for _, l in listings.iterrows()])
+    return jsonify([l.to_dict() for _, l in matches.iterrows()])
+            
+        
     
-    with open('index.html', 'w+') as f:
-        f.write(rendered)
+    
+@app.route('/photos/<filename>')
+def photos(filename):
+    return send_from_directory('photos', filename)

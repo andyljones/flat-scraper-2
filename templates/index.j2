@@ -3,32 +3,54 @@
   <head>
     <link rel="stylesheet" href="https://maxcdn.bootstrapcdn.com/bootstrap/3.3.7/css/bootstrap.min.css" integrity="sha384-BVYiiSIFeK1dGmJRAkycuHAHRg32OmUcww7on3RYdg4Va+PmSTsz/K68vbdEjh4u" crossorigin="anonymous">
     <link rel="stylesheet" href="https://maxcdn.bootstrapcdn.com/bootstrap/3.3.7/css/bootstrap-theme.min.css" integrity="sha384-rHyoN1iRsVXV4nD0JutlnGaslCJuC7uwjduW9SVrLvRYooPp2bWYgmgJQIXwl/Sp" crossorigin="anonymous">
+    <link rel="stylesheet" href="https://code.jquery.com/ui/1.12.1/themes/base/jquery-ui.css"></link>
+    <script src="https://code.jquery.com/jquery-3.1.1.js" integrity="sha256-16cdPddA6VdVInumRGo6IbivbERE8p7CQR3HzTBuELA=" crossorigin="anonymous"></script>
+    <script src="http://code.jquery.com/ui/1.12.1/jquery-ui.js" integrity="sha256-T0Vest3yCU7pafRw9r+settMBX6JkKN06dqBnpQ8d30=" crossorigin="anonymous"></script>
     <script src="https://maxcdn.bootstrapcdn.com/bootstrap/3.3.7/js/bootstrap.min.js" integrity="sha384-Tc5IQib027qvyjSMfHjOMaLkfuWVxZxUPnCJA7l2mCWNIpG9mGCD8wGNIcPD7Txa" crossorigin="anonymous"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/mustache.js/2.3.0/mustache.js"></script>
+
     <link rel="stylesheet" type="text/css" href="static/index.css">
-  </head>
-  <body>
-    <div class="container-fluid">
-      {% for listing in listings %}
-      <div class="listing panel panel-default">
+    <script src="static/index.js"></script>
+
+    <script id="listing-template" type="x-tmpl-mustache">
+      {% raw %}
+      <div class="listing panel panel-default" price="{{price}}">
         <div class="panel-heading">
           <div class="pull-left">
-            <a href="{{listing['details_url']}}"><em>{{listing['listing_id']}}</em></a> near {{listing['printable_station_names']}}
+            <a href="{{details_url}}"><em>{{humanhash}}</em></a> near {{printable_station_names}}
           </div>
           <div class="value-displays pull-right">
-            &pound{{listing['price']}}pcm
+            &pound{{price}}pcm
           </div>
           <div class="value-displays pull-right">
-            {{listing['travel_time']}} mins
+            {{travel_time}} mins
           </div>
           <div class="clearfix"></div>
         </div>
         <div id="photos" class="">
-        {% for filename in listing['photo_filenames'] %}
-          <img src="photos/{{filename}}">
-        {% endfor %}
+          {{#photo_filenames}}
+            <img src="photos/{{.}}">
+          {{/photo_filenames}}
         </div>
       </div>
-      {% endfor %}
+      {% endraw %}
+    </script>
+
+  </head>
+  <body>
+    <div class="container">
+      <div class="row">
+        <div class="col-md-6">
+          <div id="price_slider" class="slider">
+          </div>
+        </div>
+        <div class="col-md-6">
+          <div id="time_slider" class="slider"></div>
+        </div>
+      </div>
+    </div>
+    <div class="listings">
+
     </div>
   </body>
 </html>

@@ -19,3 +19,31 @@
   float: left;
   width: 99%;
 }
+
+.controls {
+  height: 50px;
+  margin: 10px;
+  float: left;
+  width: 99%;
+}
+
+.slider {
+  margin: 10px;
+}
+
+.custom-handle {
+  width: 3em;
+  height: 1.6em;
+  top: 50%;
+  margin-top: -.8em;
+  text-align: center;
+  line-height: 1.6em;
+}
+
+.ui-slider-handle {
+  width: 3em !important;
+  height: 1.6em !important;
+  margin-top: -.2em !important;
+  text-align: center;
+  line-height: 1.6em !important;
+}

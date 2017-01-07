@@ -5,27 +5,13 @@ import os
 import datetime
 import time
 import requests
-import scipy as sp
 import logging
+import interactive_console_options
+import pickle
 from diskcache import Cache
-
 from image_scraper import save_photos
-from bs4 import BeautifulSoup
 
 WEEKS_PER_MONTH = 365/12./7
-
-FIELDS_TO_STORE = [
-    'listing_id',
-    'status',
-    'price',
-    'description',
-    'details_url',
-    'first_published_date',
-    'last_published_date',
-    'agent_name',
-    'agent_phone',
-    'latitude',
-    'longitude']
 
 CACHE_LENGTH = 60*60#seconds
 API_LIMIT = 100
@@ -36,7 +22,7 @@ ZOOPLA_URL = 'http://api.zoopla.co.uk/api/v1/property_listings.js'
 def wait_for_quota():
     while True:
         limit = pd.datetime.now() - pd.Timedelta(hours=1)
-        with Cache('cache') as cache:
+        with Cache('callcache') as cache:
             cache['zoopla_calls'] = [c for c in cache.get('zoopla_calls', []) if c > limit]
             
             if len(cache['zoopla_calls']) < API_LIMIT - 1:
@@ -49,33 +35,27 @@ def wait_for_quota():
         
 
 def zoopla_listings(**kwargs):
-    kwargs['api_key'] = json.load(open('credentials.json'))['zoopla_key']        
-    key = 'listings_query/' + str(hash(tuple(sorted(kwargs.items()))))
-    
+    kwargs['api_key'] = json.load(open('credentials.json'))['zoopla_key']      
     kwargs['page_size'] = 100
     kwargs['page_number'] = 1
-    with Cache('cache') as cache:
-        if key not in cache:
-            listings = []
-            while True:
-                wait_for_quota()
-                r = requests.get(ZOOPLA_URL, params=kwargs)   
-                r.raise_for_status()
-                
-                result = json.loads(r.content.decode())
-                
-                listings.extend(result['listing'])
-                kwargs['page_number'] += 1
+    listings = []
+    while True:
+        wait_for_quota()
+        r = requests.get(ZOOPLA_URL, params=kwargs)   
+        r.raise_for_status()
+        
+        result = json.loads(r.content.decode())
+        
+        listings.extend(result['listing'])
+        kwargs['page_number'] += 1
 
-                logging.debug('Fetched {} results'.format(len(listings)))
+        logging.debug('Fetched {} results'.format(len(listings)))
+        
+        limit = min(result['result_count'], kwargs.get('max_results', 10000))
+        if len(listings) >= limit:
+            break
                 
-                limit = min(result['result_count'], kwargs.get('max_results', 10000))
-                if len(listings) >= limit:
-                    break
-                
-            cache.add(key, listings, CACHE_LENGTH)    
-            
-        return cache[key]
+    return listings
 
 def get_coords(station_name):
     coords = json.load(open('station_coords.json', 'r'))
@@ -98,10 +78,14 @@ def get_search_params(stations=None):
     params['radius'] = 0.5
     params['minimum_beds'] = 0
     params['maximum_beds'] = 1
-    params['maximum_price'] = int(1500/WEEKS_PER_MONTH)
+    params['maximum_price'] = int(2000/WEEKS_PER_MONTH)
 
+    if stations is None:
+        stations = (tfl.get_station_travel_times()
+                        .loc[lambda s: (s < 20) & (s.index.str.contains('Underground'))]
+                        .index)
+    
     results = {}
-    stations = tfl.get_fast_stations().index if stations is None else stations
     for station_name in stations:
         lat, lon = get_coords(station_name)
         params_for_name = params.copy()
@@ -112,59 +96,65 @@ def get_search_params(stations=None):
 
     return results
 
-def scrape_property_info(page_text):
-    bs = BeautifulSoup(page_text, 'html.parser')
-    tag = bs.find('h3', text='Property info').find_next_sibling('ul')
-    if tag:
-        return tag.encode_contents()
-    else:
-        return ''
-
 def create_storable_listing(station_name, start_time, listing):
     page_text = requests.get(listing['details_url']).text
     time.sleep(REQUEST_DELAY)
     
     return dict(
-        {field: listing[field] for field in FIELDS_TO_STORE},
         station_name=[station_name],
         photo_filenames=save_photos(page_text, listing['listing_id']),
-        property_info=scrape_property_info(page_text),
-        store_times=[str(start_time)]
+        store_times=[str(start_time)],
+        page_text=page_text,
+        search_result=listing
     )
 
 def update_storable_listing(station_name, start_time, stored_listing, listing):
-    storable_listing = create_storable_listing(station_name, start_time, listing)
-    storable_listing['station_name'] = list(set(stored_listing['station_name']).union(storable_listing['station_name']))
-    storable_listing['store_times'] = list(set(stored_listing['store_times']).union(storable_listing['store_times']))
+    listing_id = listing['listing_id']
+    if (listing['last_published_date'] > stored_listing['search_result']['last_published_date']):
+        logging.info(str.format('Updating listing #{}', listing_id))
+        storable_listing = create_storable_listing(station_name, start_time, listing)
+    else:
+        logging.debug(str.format('No change in listing #{}', listing_id))
+        storable_listing = stored_listing.copy()
+        
+    storable_listing['station_name'] = list(set(stored_listing['station_name']).union([station_name]))
+    storable_listing['store_times'] = list(set(stored_listing['store_times']).union([str(start_time)]))
 
     return storable_listing
 
 def store_listing(station_name, start_time, listing):
     listing_id = listing['listing_id']
-    key = 'listings/{}'.format(listing_id)
-    with Cache('cache') as cache:
-        stored_listing = cache.get(key, {})
+    path = 'listings/{}.pkl'.format(listing_id)
     
-
-    if not stored_listing:
+    if not os.path.exists('listings'):
+        os.makedirs('listings')
+    
+    if not os.path.exists(path):
         logging.info(str.format('Storing listing #{}', listing_id))
-        stored_listing = create_storable_listing(station_name, start_time, listing)
-    elif (listing['last_published_date'] > stored_listing['last_published_date']):
-        logging.info(str.format('Updating listing #{}', listing_id))
-        stored_listing = update_storable_listing(station_name, start_time, stored_listing, listing)
+        storable_listing = create_storable_listing(station_name, start_time, listing)
     else:
-        logging.debug(str.format('No change in listing #{}', listing_id))
-        stored_listing['station_name'] = list(set(stored_listing['station_name']).union([station_name]))
-        stored_listing['store_times'] = list(set(stored_listing['store_times']).union([str(start_time)]))
+        stored_listing = pickle.load(open(path, 'rb'))
+        storable_listing = update_storable_listing(station_name, start_time, stored_listing, listing)
 
-    with Cache('cache') as cache:
-        cache[key] = stored_listing
-
-def scrape_listings_and_images():
+    pickle.dump(storable_listing, open(path, 'wb+'))
+    
+def get_listing(listing_id):
+    path = 'listings/{}.pkl'.format(listing_id)
+    return pickle.load(open(path, 'rb'))
+    
+def scrape_listings_and_images(skip=0):
     start_time = datetime.datetime.now()
     
     for i, (station_name, station_params) in enumerate(get_search_params().items()):
+        if i < skip:
+            logging.info('Skipping station {}, {}'.format(i, station_name))
+            continue
+        
         listings = list(zoopla_listings(**station_params))
         logging.info(str.format('{} listings to store for station {}, {}', len(listings), i+1, station_name))
         for listing in listings:
-            store_listing(station_name, start_time, listing)
+            try:
+                store_listing(station_name, start_time, listing)
+            except Exception as e:
+                logging.warning(str.format('Failed to save listing {}. Exception: {}', listing['listing_id'], e))
+                
