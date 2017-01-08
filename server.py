@@ -14,6 +14,7 @@ import tfl
 import humanhash
 import os
 import pickle
+import matplotlib.pyplot as plt
 from flask import Flask, render_template, send_from_directory, request, jsonify
 
 from diskcache import Cache
@@ -96,6 +97,18 @@ def format_listings():
     
     return results
 
+def get_bg_color(value, lower, upper, cmap=plt.cm.viridis):
+    relative_value = sp.clip((value - lower)/(upper - lower), 0, 1)
+    background_color = tuple([int(255*c) for c in cmap(relative_value)[:3]])
+    
+    return background_color
+    
+def get_text_color(bg_color):
+    is_dark = sum(bg_color[:3])/(3*255) < 0.5
+    text_color = (230, 230, 230) if is_dark else (50, 50, 50)
+    
+    return text_color
+    
 @app.route('/')
 def index():
     return render_template('index.j2')
@@ -116,10 +129,17 @@ def listings():
                    .loc[lambda df: df.photo_filenames.apply(len) > 0]
                    .loc[lambda df: ~df.is_room]
                    .loc[lambda df: df.price.between(*price)]
-                   .loc[lambda df: df.travel_time.between(*time)])
+                   .loc[lambda df: df.travel_time.between(*time)]
+                   .sort_values(['travel_time', 'price']))
     
     subset = matches.iloc[int(lower_index):int(upper_index)]
     
+    subset['price_bg_color'] = subset.price.apply(get_bg_color, args=(price[0], price[1], plt.cm.plasma))
+    subset['price_text_color'] = subset.price_bg_color.apply(get_text_color)
+    
+    subset['time_bg_color'] = subset.travel_time.apply(get_bg_color, args=(time[0], time[1], plt.cm.plasma))
+    subset['time_text_color'] = subset.time_bg_color.apply(get_text_color)
+                          
     return jsonify({'num-results': len(matches), 
                     'listings': [l.to_dict() for _, l in subset.iterrows()]})
             

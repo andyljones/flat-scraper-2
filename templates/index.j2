@@ -16,13 +16,13 @@
       {% raw %}
       <div class="listing panel panel-default" price="{{price}}">
         <div class="panel-heading">
-          <div class="pull-left">
+          <div class="listing-title pull-left">
             <a href="{{details_url}}"><em>{{humanhash}}</em></a> near {{printable_station_names}}
           </div>
-          <div class="value-displays pull-right">
+          <div class="value-displays pull-right well well-sm" style="background:rgb({{price_bg_color}});color:rgb({{price_text_color}})">
             &pound{{price}}pcm
           </div>
-          <div class="value-displays pull-right">
+          <div class="value-displays pull-right well well-sm" style="background:rgb({{time_bg_color}});color:rgb({{time_text_color}})">
             {{travel_time}} mins
           </div>
           <div class="clearfix"></div>
