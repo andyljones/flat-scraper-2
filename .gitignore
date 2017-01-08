@@ -3,4 +3,8 @@ cache
 config.json
 credentials.json
 photos
+callcache
+tflcache
+listings
+wordlists.zip
 
