@@ -47,3 +47,11 @@
   text-align: center;
   line-height: 1.6em !important;
 }
+
+.slider-label {
+  text-align: center;
+}
+
+.num-results {
+  text-align: center;
+}

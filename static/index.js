@@ -6,7 +6,7 @@ function get_listings(clear, count) {
   $.ajax({
     url: 'listings',
     dataType: 'json',
-    async: false,
+    async: clear,
     data: {
       price_lower: prices[0],
       price_upper: prices[1],
@@ -19,9 +19,11 @@ function get_listings(clear, count) {
         $('.listings').empty();
       }
 
+      $('.num-results').text(listings['num-results'] + ' results')
+
       var template = $('#listing-template').html();
       Mustache.parse(template);
-      $.each(listings, function (index, listing) {
+      $.each(listings['listings'], function (index, listing) {
         var rendered = Mustache.render(template, listing)
         $('.listings').append(rendered);
       });
@@ -29,8 +31,8 @@ function get_listings(clear, count) {
   });
 }
 
-function set_slider_handles(name) {
-  var values = $(name).slider('option', 'values');
+function set_slider_handles(name, ui) {
+  var values = (ui && ui.values) || $(name).slider('option', 'values');
   var handles = $(name + ' .ui-slider-handle')
   $(handles[0]).text(values[0])
   $(handles[1]).text(values[1])
@@ -44,10 +46,8 @@ $(function () {
    step: 100,
    values: [500, 2000],
    create: function () { set_slider_handles('#price_slider'); },
-   slide: function (e, ui) {
-     set_slider_handles('#price_slider');
-     get_listings(true);
-   }
+   change: function () { get_listings(true); },
+   slide: function (e, ui) { set_slider_handles('#price_slider', ui); }
  });
 });
 
@@ -61,9 +61,8 @@ $(function () {
    step: 1,
    values: [0, 30],
    create: function () { set_slider_handles('#time_slider'); },
-   slide: function (e, ui) {
-     set_slider_handles('#time_slider');
-     get_listings(true); }
+   change: function () { get_listings(true); },
+   slide: function (e, ui) { set_slider_handles('#time_slider', ui); }
  });
 });
 

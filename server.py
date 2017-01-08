@@ -74,6 +74,7 @@ def format_listings():
     results = []
     for fn in os.listdir('listings'):
         listing = pickle.load(open('listings/' + fn, 'rb'))
+        listing['is_room'] = ('Room to rent</h2>' in listing['page_text'])
 
         for field in FIELDS_TO_FORMAT:
             listing[field] = listing['search_result'][field]
@@ -111,11 +112,16 @@ def listings():
     lower_index, upper_index = request.args.get('index_lower'), request.args.get('index_upper')
     
     matches = (listings
+                   .loc[lambda df: df.num_bedrooms.astype(int) > 0]
+                   .loc[lambda df: df.photo_filenames.apply(len) > 0]
+                   .loc[lambda df: ~df.is_room]
                    .loc[lambda df: df.price.between(*price)]
-                   .loc[lambda df: df.travel_time.between(*time)]
-                   .iloc[int(lower_index):int(upper_index)])
+                   .loc[lambda df: df.travel_time.between(*time)])
     
-    return jsonify([l.to_dict() for _, l in matches.iterrows()])
+    subset = matches.iloc[int(lower_index):int(upper_index)]
+    
+    return jsonify({'num-results': len(matches), 
+                    'listings': [l.to_dict() for _, l in subset.iterrows()]})
             
         
     
