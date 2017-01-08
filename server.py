@@ -117,7 +117,7 @@ def index():
 def listings():
     with Cache('cache') as cache:
         if 'listings' not in cache:
-            cache.add('listings', format_listings(), 3600)
+            cache['listings'] = format_listings()
         listings = cache['listings']
         
     price = (float(request.args.get('price_lower', 0)), float(request.args.get('price_upper', sp.inf)))
@@ -130,15 +130,18 @@ def listings():
                    .loc[lambda df: ~df.is_room]
                    .loc[lambda df: df.price.between(*price)]
                    .loc[lambda df: df.travel_time.between(*time)]
-                   .sort_values(['travel_time', 'price']))
+                   .loc[lambda df: ~df[['latitude', 'longitude', 'price', 'agent_name', 'description']].duplicated()]
+                   .sort_values(['first_published_date'], ascending=False))
     
     subset = matches.iloc[int(lower_index):int(upper_index)]
     
-    subset['price_bg_color'] = subset.price.apply(get_bg_color, args=(price[0], price[1], plt.cm.plasma))
+    subset['price_bg_color'] = subset.price.apply(get_bg_color, args=(price[0], price[1], plt.cm.magma))
     subset['price_text_color'] = subset.price_bg_color.apply(get_text_color)
     
-    subset['time_bg_color'] = subset.travel_time.apply(get_bg_color, args=(time[0], time[1], plt.cm.plasma))
+    subset['time_bg_color'] = subset.travel_time.apply(get_bg_color, args=(time[0], time[1], plt.cm.magma))
     subset['time_text_color'] = subset.time_bg_color.apply(get_text_color)
+    
+    subset['printable_published_date'] = subset.first_published_date.pipe(pd.to_datetime).dt.strftime('%-d %b')
                           
     return jsonify({'num-results': len(matches), 
                     'listings': [l.to_dict() for _, l in subset.iterrows()]})
